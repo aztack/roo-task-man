@@ -25,6 +25,16 @@ go build -tags js_hooks -o roo-task-man ./cmd/roo-task-man
 
 # Run
 ./roo-task-man
+
+# Print version
+./roo-task-man --version
+
+# Build release archives for macOS (arm64/amd64) and Windows (amd64)
+make release
+ls dist/
+
+# Update VERSION file from git tags before release
+make version-update
 ```
 
 Flags:
