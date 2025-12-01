@@ -1,0 +1,7 @@
+.cache
+.gomodcache
+.gopath
+roo-task-man
+*.zip
+.DS_Store
+hooks
