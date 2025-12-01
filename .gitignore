@@ -5,6 +5,6 @@ roo-task-man
 !cmd/roo-task-man
 *.zip
 .DS_Store
-hooks
+./hooks/**/*.js
 dist
 *-example/
