@@ -1,19 +1,20 @@
 package main
 
 import (
-    "flag"
-    "fmt"
-    "log"
-    "os"
-    "path/filepath"
+	"flag"
+	"fmt"
+	"log"
+	"os"
+	"path/filepath"
 
-    tea "github.com/charmbracelet/bubbletea"
+	tea "github.com/charmbracelet/bubbletea"
+	"golang.org/x/term"
 
-    "roocode-task-man/internal/config"
-    "roocode-task-man/internal/tasks"
-    "roocode-task-man/internal/tui"
-    "roocode-task-man/internal/zipper"
-    "roocode-task-man/internal/version"
+	"roocode-task-man/internal/config"
+	"roocode-task-man/internal/tasks"
+	"roocode-task-man/internal/tui"
+	"roocode-task-man/internal/version"
+	"roocode-task-man/internal/zipper"
 )
 
 func main() {
@@ -131,7 +132,14 @@ func main() {
         cfg.CodeChannel = "Custom"
     }
 
-    // Start TUI
+    if !(term.IsTerminal(int(os.Stdin.Fd())) || term.IsTerminal(int(os.Stdout.Fd()))) {
+        list, err := tasks.LoadTasks(cfg)
+        if err != nil { log.Fatalf("failed to load tasks: %v", err) }
+        fmt.Printf("%d tasks\n", len(list))
+        for _, t := range list { fmt.Printf("%s\t%s\n", t.ID, t.Title) }
+        if cleanup != nil { cleanup() }
+        return
+    }
     model := tui.New(cfg)
     p := tea.NewProgram(model)
     if _, err := p.Run(); err != nil {

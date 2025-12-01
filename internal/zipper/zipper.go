@@ -13,6 +13,9 @@ import (
     "roocode-task-man/internal/tasks"
 )
 
+// ProgressCallback is called during export with current progress (current, total)
+type ProgressCallback func(current, total int)
+
 type Manifest struct {
     ID        string    `json:"id"`
     Title     string    `json:"title"`
@@ -55,7 +58,13 @@ func ExportTask(t tasks.Task, zipPath string) error {
 }
 
 // ExportTasks writes multiple tasks into a single zip with a v2 manifest.
+// Progress callback is optional and called with (current, total) file count.
 func ExportTasks(ts []tasks.Task, zipPath string) error {
+    return ExportTasksWithProgress(ts, zipPath, nil)
+}
+
+// ExportTasksWithProgress writes multiple tasks into a single zip with progress reporting.
+func ExportTasksWithProgress(ts []tasks.Task, zipPath string, progress ProgressCallback) error {
     if err := os.MkdirAll(filepath.Dir(zipPath), 0o755); err != nil { return err }
     f, err := os.Create(zipPath)
     if err != nil { return err }
@@ -69,16 +78,30 @@ func ExportTasks(ts []tasks.Task, zipPath string) error {
     }
     if err := writeJSON(zw, "roo-task-manifest.json", mm); err != nil { return err }
 
+    // Count total files first for progress reporting
+    totalFiles := 0
+    for _, t := range ts {
+        _ = filepath.Walk(t.Path, func(path string, info os.FileInfo, err error) error {
+            if err != nil { return nil }
+            if !info.IsDir() { totalFiles++ }
+            return nil
+        })
+    }
+
+    currentFiles := 0
     // Include files for each task under <id>/...
     for _, t := range ts {
         err := filepath.Walk(t.Path, func(path string, info os.FileInfo, err error) error {
             if err != nil { return err }
             if info.IsDir() { return nil }
+            currentFiles++
+            if progress != nil { progress(currentFiles, totalFiles) }
             rel, _ := filepath.Rel(t.Path, path)
             return addFile(zw, path, filepath.Join(t.ID, rel))
         })
         if err != nil { return err }
     }
+    if progress != nil { progress(totalFiles, totalFiles) }
     return nil
 }
 

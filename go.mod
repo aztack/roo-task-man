@@ -3,10 +3,11 @@ module roocode-task-man
 go 1.23
 
 require (
-	github.com/charmbracelet/bubbles v0.18.0
-	github.com/charmbracelet/bubbletea v0.25.0
-	github.com/charmbracelet/glamour v0.7.0
-	github.com/dop251/goja v0.0.0-20251121114222-56b1242a5f86
+    github.com/charmbracelet/bubbles v0.18.0
+    github.com/charmbracelet/bubbletea v0.25.0
+    github.com/charmbracelet/glamour v0.7.0
+    github.com/charmbracelet/lipgloss v0.9.1
+    github.com/dop251/goja v0.0.0-20251121114222-56b1242a5f86
 )
 
 require (
@@ -14,7 +15,6 @@ require (
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
-	github.com/charmbracelet/lipgloss v0.9.1 // indirect
 	github.com/containerd/console v1.0.4-0.20230313162750-1ae8d489ac81 // indirect
 	github.com/dlclark/regexp2 v1.11.4 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
@@ -38,5 +38,5 @@ require (
 	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.13.0 // indirect
 	golang.org/x/term v0.13.0 // indirect
-	golang.org/x/text v0.13.0 // indirect
+    golang.org/x/text v0.13.0 // indirect
 )

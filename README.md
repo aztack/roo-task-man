@@ -16,12 +16,11 @@ Terminal TUI for browsing, exporting, importing, and deleting RooCode tasks crea
 - Install deps and build:
 
 ```
-# Using Makefile (builds with JS hooks by default)
+# Using Makefile (CGO required for JS engine)
 make build
 
-# Or manual build
-go get github.com/dop251/goja@latest
-go build -tags js_hooks -o roo-task-man ./cmd/roo-task-man
+# Or manual build (requires CGO)
+CGO_ENABLED=1 go build -o roo-task-man ./cmd/roo-task-man
 
 # Run
 ./roo-task-man
@@ -108,11 +107,9 @@ Default export location
 
 Place `.js` files in `hooksDir`. See `docs/hooks.d.ts` for available hook signatures.
 
-Important: Build with JS hooks enabled
-- The JS runtime is optional and behind a build tag. To enable hooks:
-  - `go get github.com/dop251/goja@latest`
-  - `go build -tags js_hooks -o roo-task-man ./cmd/roo-task-man`
-  - Run with your hooks: `./roo-task-man --hooks-dir ./hooks/custom`
+Hooks are enabled by default
+- No special build tags are needed. Place `.js` files in your `--hooks-dir` and run with `--debug` to see hook loader/call logs.
+- Note: The default JS engine uses CGO; ensure a C toolchain is available (Xcode CLT on macOS, MinGW on Windows for cross-compiles).
 
 Customize task list items
 ```
@@ -146,7 +143,7 @@ export function renderTaskListItem(task) {
 }
 ```
 
-Run with: `./roo-task-man --hooks-dir ./hooks/custom` (build with `-tags js_hooks`).
+Run with: `./roo-task-man --hooks-dir ./hooks/custom`.
 
 ## Notes
 

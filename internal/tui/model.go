@@ -58,6 +58,9 @@ type model struct {
     histUser []int
     lastFilter string
     selected map[string]bool
+    hookApplied map[string]bool // tracks which task IDs had hooks applied
+    // Selection state tracker for IME/filtering robustness
+    selectionTracker map[string]bool // persistent selection state by task ID
 }
 
 type item struct{ t tasks.Task; selected bool; desc string; title string }
@@ -118,7 +121,12 @@ func New(cfg config.Config) model {
     ti := textinput.New()
     ti.Placeholder = "search..."
     ti.CharLimit = 200
-    m := model{cfg: cfg, list: lm, help: help.New(), spin: sp, input: ti, loading: true, selected: map[string]bool{}}
+    m := model{
+        cfg: cfg, list: lm, help: help.New(), spin: sp, input: ti, loading: true,
+        selected: map[string]bool{},
+        hookApplied: map[string]bool{},
+        selectionTracker: map[string]bool{},
+    }
     return m
 }
 
@@ -151,6 +159,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
             if len(m.tasks) > 0 {
                 m.rebuildListItemsPreserveSelection()
             }
+        }
+        return m, nil
+    case exportProgressMsg:
+        if msg.err != nil {
+            m.statusMsg = "export failed: " + msg.err.Error()
+        } else {
+            if ap, _ := filepath.Abs(msg.zipPath); ap != "" { msg.zipPath = ap }
+            if m.detail != nil {
+                m.topMsg = fmt.Sprintf("Exported %d tasks to %s", msg.total, msg.zipPath)
+            } else {
+                m.statusMsg = fmt.Sprintf("exported %d tasks to %s", msg.total, msg.zipPath)
+            }
+            _ = openInExplorer(filepath.Dir(msg.zipPath))
         }
         return m, nil
     case spinner.TickMsg:
@@ -286,28 +307,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
                     if base == "" { base = "." }
                     prefix := fmt.Sprintf("%s-%s", slug(tasks.DisplayEditorName(m.cfg.CodeChannel)), slug(m.cfg.PluginID))
                     zipPath := filepath.Join(base, fmt.Sprintf("%s-tasks-%s.zip", prefix, time.Now().Format("20060102-150405")))
-                    if m.detail != nil { m.topMsg = "Compressing selected tasks..." }
-                    if err := zipper.ExportTasks(sel, zipPath); err != nil {
-                        m.statusMsg = "export failed: " + err.Error()
-                    } else {
-                        if ap, _ := filepath.Abs(zipPath); ap != "" { zipPath = ap }
-                        if m.detail != nil { m.topMsg = fmt.Sprintf("Exported %d tasks to %s", len(sel), zipPath) } else { m.statusMsg = fmt.Sprintf("exported %d tasks to %s", len(sel), zipPath) }
-                        _ = openInExplorer(filepath.Dir(zipPath))
-                    }
+                    if m.detail != nil { m.topMsg = fmt.Sprintf("Exporting %d tasks... 0%%", len(sel)) }
+                    return m, exportTasksCmd(sel, zipPath)
                 } else {
                     t := it.t
                     base := m.cfg.ExportDir
                     if base == "" { base = "." }
                     prefix := fmt.Sprintf("%s-%s", slug(tasks.DisplayEditorName(m.cfg.CodeChannel)), slug(m.cfg.PluginID))
                     zipPath := filepath.Join(base, fmt.Sprintf("%s-%s.zip", prefix, t.ID))
-                    if m.detail != nil { m.topMsg = "Compressing task..." }
-                    if err := zipper.ExportTask(t, zipPath); err != nil {
-                        m.statusMsg = "export failed: " + err.Error()
-                    } else {
-                        if ap, _ := filepath.Abs(zipPath); ap != "" { zipPath = ap }
-                        if m.detail != nil { m.topMsg = "Exported to " + zipPath } else { m.statusMsg = "exported to " + zipPath }
-                        _ = openInExplorer(filepath.Dir(zipPath))
-                    }
+                    if m.detail != nil { m.topMsg = "Exporting task... 0%" }
+                    return m, exportTasksCmd([]tasks.Task{t}, zipPath)
                 }
             }
             return m, nil
@@ -318,23 +327,36 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
             if base == "" { base = "." }
             prefix := fmt.Sprintf("%s-%s", slug(tasks.DisplayEditorName(m.cfg.CodeChannel)), slug(m.cfg.PluginID))
             zipPath := filepath.Join(base, fmt.Sprintf("%s-tasks-%s.zip", prefix, time.Now().Format("20060102-150405")))
-            if m.detail != nil { m.topMsg = "Compressing selected tasks..." }
-            if err := zipper.ExportTasks(sel, zipPath); err != nil { m.statusMsg = "export failed: " + err.Error() } else { if ap, _ := filepath.Abs(zipPath); ap != "" { zipPath = ap }; if m.detail != nil { m.topMsg = fmt.Sprintf("Exported %d tasks to %s", len(sel), zipPath) } else { m.statusMsg = fmt.Sprintf("exported %d tasks to %s", len(sel), zipPath) }; _ = openInExplorer(filepath.Dir(zipPath)) }
-            return m, nil
+            if m.detail != nil { m.topMsg = fmt.Sprintf("Exporting %d tasks... 0%%", len(sel)) }
+            return m, exportTasksCmd(sel, zipPath)
         case keys.toggleSel.Keys()[0], keys.toggleSelAlt.Keys()[0]:
-            // Toggle selection regardless of filtering: find by ID in underlying items
+            // Toggle selection using persistent tracker for IME robustness
             if selItem, ok := m.list.SelectedItem().(item); ok {
                 id := selItem.t.ID
+                // Toggle in persistent tracker
+                m.selectionTracker[id] = !m.selectionTracker[id]
+                // Update display for current filtered view
                 for i, li := range m.list.Items() {
                     it := li.(item)
-                    if it.t.ID == id { it.selected = !it.selected; m.selected[id] = it.selected; m.list.SetItem(i, it); break }
+                    if it.t.ID == id {
+                        it.selected = m.selectionTracker[id]
+                        m.selected[id] = m.selectionTracker[id]
+                        m.list.SetItem(i, it)
+                        break
+                    }
                 }
             }
             return m, nil
         case keys.clearSel.Keys()[0]:
+            // Clear all selections using persistent tracker
+            m.selectionTracker = map[string]bool{}
             m.selected = map[string]bool{}
             for i, li := range m.list.Items() {
-                it := li.(item); if it.selected { it.selected = false; m.list.SetItem(i, it) }
+                it := li.(item)
+                if it.selected {
+                    it.selected = false
+                    m.list.SetItem(i, it)
+                }
             }
             m.statusMsg = "selection cleared"
             return m, nil
@@ -446,10 +468,21 @@ func loadTasksWithHooksCmd(cfg config.Config) tea.Cmd {
 
 type hooksLoadedMsg struct{ env *hooks.HookEnv }
 
+type exportProgressMsg struct{ current, total int; zipPath string; err error }
+
 func loadHooksCmd(cfg config.Config) tea.Cmd {
     return func() tea.Msg {
         env, _ := hooks.LoadDir(cfg.HooksDir)
         return hooksLoadedMsg{env}
+    }
+}
+
+func exportTasksCmd(sel []tasks.Task, zipPath string) tea.Cmd {
+    return func() tea.Msg {
+        err := zipper.ExportTasksWithProgress(sel, zipPath, func(current, total int) {
+            // Note: We can't send messages from callback, but we track final state
+        })
+        return exportProgressMsg{current: len(sel), total: len(sel), zipPath: zipPath, err: err}
     }
 }
 
@@ -488,21 +521,29 @@ func (m *model) rebuildListItemsPreserveSelection() {
     base := m.tasks
     // Special token pre-filtering
     q := strings.TrimSpace(m.list.FilterValue())
-    if strings.Contains(q, "-uid=") || strings.Contains(q, "-d=") {
-        uidTok, dateTok := parseSpecialFilter(q)
+    if strings.Contains(q, "-uid=") || strings.Contains(q, "-d") {
+        uidTok, dateOp, dateTok := parseSpecialFilter(q)
         filtered := make([]tasks.Task, 0, len(base))
         for _, t := range base {
             ok := true
             if uidTok != "" && !strings.Contains(strings.ToLower(t.ID), strings.ToLower(uidTok)) { ok = false }
-            if dateTok != "" && !strings.Contains(strings.ToLower(humanTime(t.CreatedAt)), strings.ToLower(dateTok)) { ok = false }
+            if dateTok != "" && !matchesDateFilter(t.CreatedAt, dateOp, dateTok) { ok = false }
             if ok { filtered = append(filtered, t) }
         }
         base = filtered
     }
 
     items := make([]list.Item, 0, len(base))
+    // Clear hook tracking before rebuilding
+    m.hookApplied = map[string]bool{}
+
     for _, t := range base {
         shownTitle := sanitizeTitle(t.Title)
+        // Get selection state from persistent tracker (robust to IME/filter changes)
+        isSelected := m.selectionTracker[t.ID]
+        // Sync to display state
+        m.selected[t.ID] = isSelected
+
         // Hook: renderTaskListItem can override title/desc
         if m.hooks != nil {
             mv := map[string]any{"id": t.ID, "title": t.Title, "summary": t.Summary, "createdAt": t.CreatedAt.Format(time.RFC3339), "path": t.Path, "meta": t.Meta}
@@ -512,12 +553,16 @@ func (m *model) rebuildListItemsPreserveSelection() {
                     if s, ok3 := om["title"].(string); ok3 && s != "" { shownTitle = sanitizeTitle(s) }
                     if s, ok3 := om["desc"].(string); ok3 && s != "" {
                         if m.cfg.Debug { log.Printf("[hooks] renderTaskListItem override for %s", t.ID) }
-                        items = append(items, item{t: t, selected: m.selected[t.ID], desc: sanitizeInline(s), title: shownTitle})
+                        m.hookApplied[t.ID] = true
+                        hookBadge := lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render("[H] ")
+                        items = append(items, item{t: t, selected: isSelected, desc: sanitizeInline(s), title: hookBadge + shownTitle})
                         continue
                     }
                     if s, ok3 := om["description"].(string); ok3 && s != "" {
                         if m.cfg.Debug { log.Printf("[hooks] renderTaskListItem override(desc) for %s", t.ID) }
-                        items = append(items, item{t: t, selected: m.selected[t.ID], desc: sanitizeInline(s), title: shownTitle})
+                        m.hookApplied[t.ID] = true
+                        hookBadge := lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render("[H] ")
+                        items = append(items, item{t: t, selected: isSelected, desc: sanitizeInline(s), title: hookBadge + shownTitle})
                         continue
                     }
                 }
@@ -529,7 +574,7 @@ func (m *model) rebuildListItemsPreserveSelection() {
         title := shownTitle
         // always show second line: created and UID
         desc := fmt.Sprintf("%s • %s", humanTime(t.CreatedAt), t.ID)
-        items = append(items, item{t: t, selected: m.selected[t.ID], desc: desc, title: title})
+        items = append(items, item{t: t, selected: isSelected, desc: desc, title: title})
     }
     m.list.SetItems(items)
 }
@@ -557,15 +602,68 @@ func selectedPrefix() string {
     return lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Render("[x] ")
 }
 
-func parseSpecialFilter(q string) (uid string, date string) {
-    // parse -uid= and -d= tokens (case-insensitive)
+func parseSpecialFilter(q string) (uid, dateOp, dateVal string) {
+    // parse -uid= and -d[op]= tokens (case-insensitive)
+    // Operators: -d=   (contains), -d>=  (>=), -d<=  (<=), -d: (month match)
     parts := strings.Fields(q)
     for _, p := range parts {
         pp := strings.ToLower(p)
-        if strings.HasPrefix(pp, "-uid=") { uid = strings.TrimSpace(p[len("-uid="):]) }
-        if strings.HasPrefix(pp, "-d=") { date = strings.TrimSpace(p[len("-d="):]) }
+        if strings.HasPrefix(pp, "-uid=") {
+            uid = strings.TrimSpace(p[len("-uid="):])
+        }
+        if strings.HasPrefix(pp, "-d") {
+            // Order matters: check longer prefixes first
+            if strings.HasPrefix(pp, "-d>=") {
+                dateOp = ">="
+                dateVal = strings.TrimSpace(p[len("-d>="):])
+            } else if strings.HasPrefix(pp, "-d<=") {
+                dateOp = "<="
+                dateVal = strings.TrimSpace(p[len("-d<="):])
+            } else if strings.HasPrefix(pp, "-d:") {
+                dateOp = "match"
+                dateVal = strings.TrimSpace(p[len("-d:"):])
+            } else if strings.HasPrefix(pp, "-d=") {
+                dateOp = "contains"
+                dateVal = strings.TrimSpace(p[len("-d="):])
+            }
+        }
     }
     return
+}
+
+func matchesDateFilter(createdAt time.Time, op string, filterVal string) bool {
+    if op == "" || filterVal == "" {
+        return true
+    }
+
+    switch op {
+    case "contains":
+        // Simple substring match on formatted time
+        return strings.Contains(strings.ToLower(humanTime(createdAt)), strings.ToLower(filterVal))
+    case "match":
+        // Month/year pattern matching (e.g., "2024-12" or "2024")
+        formatted := createdAt.Format("2006-01-02")
+        return strings.HasPrefix(formatted, filterVal)
+    case ">=":
+        // Parse date and compare: -d>=2024-12-01
+        target, err := time.Parse("2006-01-02", filterVal)
+        if err != nil {
+            // Fallback to substring matching if parse fails
+            return strings.Contains(humanTime(createdAt), filterVal)
+        }
+        return createdAt.After(target) || createdAt.Equal(target.Truncate(24*time.Hour))
+    case "<=":
+        // Parse date and compare: -d<=2024-12-31
+        target, err := time.Parse("2006-01-02", filterVal)
+        if err != nil {
+            return strings.Contains(humanTime(createdAt), filterVal)
+        }
+        // End of day comparison
+        endOfDay := target.Add(24*time.Hour - time.Nanosecond)
+        return createdAt.Before(endOfDay) || createdAt.Equal(target.Truncate(24*time.Hour))
+    default:
+        return true
+    }
 }
 
 func slug(s string) string {
