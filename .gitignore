@@ -2,6 +2,9 @@
 .gomodcache
 .gopath
 roo-task-man
+!cmd/roo-task-man
 *.zip
 .DS_Store
 hooks
+dist
+*-example/
