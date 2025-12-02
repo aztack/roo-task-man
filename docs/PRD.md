@@ -71,22 +71,26 @@ By default, tasks are assumed to live under VS Code’s `globalStorage` area for
 
 ### List View
 
-- Shows tasks in a scrollable list with keyboard navigation.
+- Two-line rows with keyboard navigation.
 - Default rendering:
-  - Title line: a single-line title (sanitized from summary when available).
+  - Title line: single-line title (sanitized from summary when available).
   - Second line: `created time • task UID`.
-- Sorting: latest-first by default; toggle asc/desc with `S`.
-- Filtering: type to search by title, UID, and created time.
+- Sorting: latest-first by default; toggle asc/desc with `S` (title shows `[sort:…]`).
+- Filtering: type to search by title, UID, created time, and description.
   - Strict tokens: `-uid=<part>` and `-d=<part-of-created-time>` pre-filter the task set before fuzzy matching.
+- Selection: `Tab`/`Space` toggle, `C` clear; selection works even when filtering.
+- Actions: `e` export current, `E` export selected, `o` open task folder, `x` delete (confirm), `r` refresh, `?` help.
+- Navigation: `j/k`, `g/G`, PgDown/Ctrl+f/Ctrl+d, PgUp/Ctrl+b/Ctrl+u.
 - Hooks may customize list item rendering via `renderTaskListItem(task)`.
-- Vim keys: `j/k` move, `g/G` top/bottom, `Enter` open, `q` quit.
-- Actions: `e` export selected, `x` delete (asks confirmation), `r` refresh, `/` filter (stretch goal), `?` help.
 
 ### Detail View
 
-- Shows task metadata and key files (summaries, paths) with paging.
-- Vim keys: `h` back, `l` open subsection (future), `q` back/quit if at root.
-- Integrates hook outputs: custom sections or decorations.
+- Markdown-rendered details with paging.
+- Actions shown at the top: back, open dir, export, delete, search.
+- Search `/` with highlight; `n/N` next/prev match.
+- History from `ui_messages.json` with roles (🧑 user, 🤖 AI).
+- Jump entries `J/K`, by role `]`/`[`, `}`/`{`.
+- Integrates hook outputs as additional sections.
 
 ### Alerts/Confirmation
 
@@ -103,8 +107,10 @@ By default, tasks are assumed to live under VS Code’s `globalStorage` area for
   - `--config <path>` (defaults to `~/.config/roo-code-man.json`)
   - `--export <task-id>:<zip-path>` (batch export then exit)
   - `--import <zip-path>` (batch import then exit)
-  - `--export-dir <path>` (default directory for TUI exports)
-  - `--debug` (print debug info and append full paths in list)
+  - `--inspect <zip-path>` (extract and open TUI on the archive)
+  - `--export-dir <path>` (default directory for TUI exports; default CWD)
+  - `--debug` (print debug info and hook logs)
+  - `--version` (print version and exit)
 
 ## Export/Import
 
@@ -117,7 +123,7 @@ By default, tasks are assumed to live under VS Code’s `globalStorage` area for
 Purpose: allow extensions/forks to change how tasks are discovered, titled, and displayed.
 
 - Location: configurable `hooksDir` (default `~/.config/roo-code-man/hooks`). All `.js` files in the dir are loaded.
-- Runtime: Goja (embedded JS engine). Hooks run in a sandboxed context with a small API surface.
+- Runtime: Goja (embedded JS engine). Hooks are built-in by default (no build tags).
 - Provided types (for DX): shipped as `docs/hooks.d.ts`.
 
 Hook points (initial):

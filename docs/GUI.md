@@ -19,7 +19,8 @@ App Structure
 - Views:
   - Sidebar + main content layout.
   - TaskListView: searchable/sortable list with 2-line rows (title + created/UID). Shows counts and quick actions (Export, Delete, Open Folder).
-  - TaskDetailView: header with title/UID/time/path, sections (History, Extra Info), and actions (Export, Delete, Open Folder).
+- TaskDetailView: header with title/UID/time/path, sections (History, Extra Info), and actions (Export, Delete, Open Folder).
+  - Export filename defaults: if multiple tasks are exported without a user-specified filename, use `<editor>-<pluginId>-<A>_<B>_<C>.zip` where A/B/C are the first segments (before `-`) of each UID; for a single task, use the full UID.
   - Import/Export Sheets: choose zip path(s) and confirm operations. Show progress bars.
   - PreferencesView: set plugin ID, editor/channel (Code/Insiders/VSCodium/Cursor/Windsurf/Trae/Custom), dataDir override, exportDir.
 
@@ -45,6 +46,7 @@ User Flows
 - Import zip(s) to current storage root; handle collisions (copy suffix or overwrite via option).
 - Delete with confirmation.
 - Open task folder in Finder.
+- Restore from state DB backups: list `state.vscdb.bak-<suffix>` files, select to restore both `state.vscdb` and paired `state.vscdb.backup`. Prompt users to fully close the editor before restoring.
 
 Performance
 - Lazy load task rows and detail content; avoid blocking the main thread.
@@ -61,4 +63,3 @@ Deliverables
 - Xcode project with Swift Package Manager dependencies.
 - Minimal app icon and signing setup for local runs.
 - README for building and running the app.
-
