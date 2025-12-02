@@ -29,6 +29,7 @@ import (
 type model struct {
     cfg       config.Config
     list      list.Model
+    prompts   list.Model
     detail    *tasks.Task
     help      help.Model
     vp        viewport.Model
@@ -61,14 +62,17 @@ type model struct {
     hookApplied map[string]bool // tracks which task IDs had hooks applied
     // Selection state tracker for IME/filtering robustness
     selectionTracker map[string]bool // persistent selection state by task ID
+
+    // right-panel cache
+    promptsForID string
 }
 
-type item struct{ t tasks.Task; selected bool; desc string; title string }
+type item struct{ t tasks.Task; selected bool; desc string; title string; corpus string }
 
 func (i item) Title() string       { if i.selected { return selectedPrefix() + i.title }; return i.title }
 func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string {
-    return i.t.Title + " " + i.t.ID + " " + humanTime(i.t.CreatedAt) + " uid:" + i.t.ID + " -uid=" + i.t.ID + " -d=" + humanTime(i.t.CreatedAt) + " " + i.desc
+    return i.t.Title + " " + i.t.ID + " " + humanTime(i.t.CreatedAt) + " uid:" + i.t.ID + " -uid=" + i.t.ID + " -d=" + humanTime(i.t.CreatedAt) + " " + i.desc + " " + i.corpus
 }
 
 type keymap struct{
@@ -116,13 +120,24 @@ func New(cfg config.Config) model {
     hs := lm.Styles.HelpStyle
     hs = hs.Foreground(lipgloss.AdaptiveColor{Light: "#6B7280", Dark: "#B0B7C3"}).Bold(true)
     lm.Styles.HelpStyle = hs
+
+    // Right panel (prompts) — read‑only list
+    pm := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
+    pm.Title = "Prompts"
+    pm.SetShowStatusBar(false)
+    pm.SetFilteringEnabled(false)
+    pm.DisableQuitKeybindings()
+    // Tone down help for the right list
+    phs := pm.Styles.HelpStyle
+    phs = phs.Foreground(lipgloss.AdaptiveColor{Light: "#6B7280", Dark: "#8892A0"})
+    pm.Styles.HelpStyle = phs
     sp := spinner.New()
     sp.Spinner = spinner.MiniDot
     ti := textinput.New()
     ti.Placeholder = "search..."
     ti.CharLimit = 200
     m := model{
-        cfg: cfg, list: lm, help: help.New(), spin: sp, input: ti, loading: true,
+        cfg: cfg, list: lm, prompts: pm, help: help.New(), spin: sp, input: ti, loading: true,
         selected: map[string]bool{},
         hookApplied: map[string]bool{},
         selectionTracker: map[string]bool{},
@@ -138,7 +153,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
     switch msg := msg.(type) {
     case tea.WindowSizeMsg:
         m.width, m.height = msg.Width, msg.Height
-        m.list.SetSize(m.width, m.height-2)
+        // Split into 2 panels with a small padding column
+        leftW := max(20, m.width/2)
+        rightW := max(10, m.width-leftW)
+        h := max(5, m.height-2)
+        m.list.SetSize(leftW, h)
+        m.prompts.SetSize(rightW, h)
         return m, nil
     case tasksLoadedMsg:
         m.tasks = []tasks.Task(msg)
@@ -149,6 +169,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
         } else {
             m.statusMsg = fmt.Sprintf("%d tasks", len(m.tasks))
             m.list.Select(0)
+            m.refreshPromptsFromSelection()
         }
         return m, nil
     case hooksLoadedMsg:
@@ -258,6 +279,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
             return m, nil
         }
         // List view key handling
+        // When filter text input is active, do not trigger one-key item shortcuts; let list handle it.
+        if m.list.FilterState() == list.Filtering {
+            // Delegate to list (handled below) and avoid shortcut handling here.
+            break
+        }
         switch msg.String() {
         case keys.quit.Keys()[0], "ctrl+c":
             return m, tea.Quit
@@ -402,6 +428,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
         m.lastFilter = f
         m.rebuildListItemsPreserveSelection()
     }
+    // Update right panel when selection changes
+    m.refreshPromptsFromSelection()
     return m, cmd
 }
 
@@ -419,7 +447,11 @@ func (m model) View() string {
     if m.loading {
         return fmt.Sprintf("%s Loading tasks...", m.spin.View())
     }
-    return m.list.View() + footer(m.statusMsg)
+    // Two-panel list view: tasks | prompts
+    left := m.list.View()
+    right := m.prompts.View()
+    combined := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+    return combined + footer(m.statusMsg)
 }
 
 func (m model) selectedTasks() []tasks.Task {
@@ -540,7 +572,7 @@ func (m *model) rebuildListItemsPreserveSelection() {
     m.hookApplied = map[string]bool{}
 
     for _, t := range base {
-        shownTitle := sanitizeTitle(t.Title)
+        shownTitle, _, _ := tasks.CleanOneLine(t.Title, 120)
         // Get selection state from persistent tracker (robust to IME/filter changes)
         isSelected := m.selectionTracker[t.ID]
         // Sync to display state
@@ -552,19 +584,19 @@ func (m *model) rebuildListItemsPreserveSelection() {
             if m.cfg.Debug { log.Printf("[hooks] calling renderTaskListItem for %s", t.ID) }
             if out, ok := m.hooks.CallExported("renderTaskListItem", mv); ok {
                 if om, ok2 := out.(map[string]any); ok2 {
-                    if s, ok3 := om["title"].(string); ok3 && s != "" { shownTitle = sanitizeTitle(s) }
+                    if s, ok3 := om["title"].(string); ok3 && s != "" { shownTitle, _, _ = tasks.CleanOneLine(s, 120) }
                     if s, ok3 := om["desc"].(string); ok3 && s != "" {
                         if m.cfg.Debug { log.Printf("[hooks] renderTaskListItem override for %s", t.ID) }
                         m.hookApplied[t.ID] = true
                         hookBadge := lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render("[H] ")
-                        items = append(items, item{t: t, selected: isSelected, desc: sanitizeInline(s), title: hookBadge + shownTitle})
+                        items = append(items, item{t: t, selected: isSelected, desc: sanitizeInline(s), title: hookBadge + shownTitle, corpus: buildPromptCorpus(t)})
                         continue
                     }
                     if s, ok3 := om["description"].(string); ok3 && s != "" {
                         if m.cfg.Debug { log.Printf("[hooks] renderTaskListItem override(desc) for %s", t.ID) }
                         m.hookApplied[t.ID] = true
                         hookBadge := lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render("[H] ")
-                        items = append(items, item{t: t, selected: isSelected, desc: sanitizeInline(s), title: hookBadge + shownTitle})
+                        items = append(items, item{t: t, selected: isSelected, desc: sanitizeInline(s), title: hookBadge + shownTitle, corpus: buildPromptCorpus(t)})
                         continue
                     }
                 }
@@ -576,9 +608,32 @@ func (m *model) rebuildListItemsPreserveSelection() {
         title := shownTitle
         // always show second line: created and UID
         desc := fmt.Sprintf("%s • %s", humanTime(t.CreatedAt), t.ID)
-        items = append(items, item{t: t, selected: isSelected, desc: desc, title: title})
+        corpus := buildPromptCorpus(t)
+        items = append(items, item{t: t, selected: isSelected, desc: desc, title: title, corpus: corpus})
     }
     m.list.SetItems(items)
+}
+
+// refreshPromptsFromSelection populates the right panel with user prompts
+// for the currently selected task. It keeps titles to a single line.
+func (m *model) refreshPromptsFromSelection() {
+    itf := m.list.SelectedItem()
+    if itf == nil { m.prompts.SetItems(nil); m.promptsForID = ""; return }
+    it := itf.(item)
+    if it.t.ID == m.promptsForID { return }
+    // Build prompt list from history (role == user)
+    hist := tasks.LoadHistory(it.t)
+    items := make([]list.Item, 0, len(hist))
+    for _, h := range hist {
+        if h.Role != "user" { continue }
+        title, _, _ := tasks.CleanOneLine(h.Text, 120)
+        if title == "" { continue }
+        desc := humanTime(h.At)
+        items = append(items, item{t: it.t, selected: false, title: title, desc: desc})
+    }
+    m.prompts.Title = "Prompts"
+    m.prompts.SetItems(items)
+    m.promptsForID = it.t.ID
 }
 
 func sanitizeInline(s string) string {
@@ -589,19 +644,27 @@ func sanitizeInline(s string) string {
 }
 
 func sanitizeTitle(s string) string {
-    ss := strings.TrimSpace(s)
-    if strings.HasPrefix(ss, "```") {
-        ss = strings.TrimPrefix(ss, "```")
-        ss = strings.TrimSuffix(ss, "```")
-    }
-    // collapse newlines and backticks
-    ss = strings.ReplaceAll(ss, "\n", " ")
-    ss = strings.ReplaceAll(ss, "\r", " ")
-    return strings.TrimSpace(ss)
+    out, _, _ := tasks.CleanOneLine(s, 120)
+    return out
 }
 
 func selectedPrefix() string {
     return lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Render("[x] ")
+}
+
+func buildPromptCorpus(t tasks.Task) string {
+    hist := tasks.LoadHistory(t)
+    const maxCorpusLen = 4000
+    b := strings.Builder{}
+    for _, h := range hist {
+        if h.Role != "user" { continue }
+        line, _, _ := tasks.CleanOneLine(h.Text, 200)
+        if line == "" { continue }
+        if b.Len() > 0 { b.WriteByte(' ') }
+        b.WriteString(line)
+        if b.Len() >= maxCorpusLen { break }
+    }
+    return b.String()
 }
 
 func parseSpecialFilter(q string) (uid, dateOp, dateVal string) {

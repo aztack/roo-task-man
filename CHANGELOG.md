@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.1.2 — 2025-12-02
+
+- TUI list → two-panel layout finalized (no visual change from prior): left Tasks, right Prompts for the selected task.
+- Filtering now searches user prompts in addition to title/ID/created.
+- While filtering, one-key item shortcuts are disabled to prevent accidental actions.
+- Single-line sanitization for titles and prompts (TUI and dump): remove fenced code blocks and pure JSON objects; collapse whitespace; truncate long text.
+- New `--dump <file.md>`: dumps all tasks with human prompts to Markdown.
+  - Shows a single-line progress indicator: `Dumping X/Y…`.
+  - If a title/prompt is sanitized or truncated, includes full text in a collapsible `<details>` block beneath it.
+
 ## v0.1.1 — 2025-12-02
 
 - CLI export without TUI

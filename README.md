@@ -2,12 +2,13 @@
 
 Terminal TUI for browsing, exporting, importing, and deleting RooCode tasks created by the VS Code extension `RooVeterinaryInc.roo-cline` (and forks).
 
-![task-list](screenshot/task-list.png)
-![task-detail](screenshot/task-detail.png)
+![UI](screenshot/duel-panel.png)
 
 
 
 - Built with Go + Charmbracelet Bubble Tea
+- Two‑panel list: left Tasks, right Prompts (human prompts of selected task)
+- Filter matches title/ID/created AND user prompts; selection updates Prompts panel
 - Vim keys: j/k/g/G, Enter/l open, h back, q quit, r refresh, e export, x delete
 
 See CHANGELOG.md for release notes (latest: v0.1.1).
@@ -61,6 +62,7 @@ Flags:
 - `--restore` interactive restore of `state.vscdb` from backups (lists `state.vscdb.bak-*`, restore both primary and paired `state.vscdb.backup`)
 - `--inspect <zip>` inspect a zip by extracting to a temp dir and opening the TUI on it
 - `--export-dir <path>` default directory for TUI exports
+- `--dump <file.md>` dump all tasks and human prompts to Markdown with a single‑line progress indicator
 - `--debug` print debug info (storage root, task paths) and show full paths in list descriptions
 
 Default export location
@@ -74,8 +76,9 @@ Default export location
 
 - List view
   - Sort by created time: `S` toggles asc/desc (default: latest first)
-  - Filter: just type; searches title + UID + created time + description
-    - Explicit filters supported (strict pre-filter): include `-uid=<part>` and/or `-d=<part-of-created-time>` in your query; only matching tasks are shown, then further fuzzy filtering applies within those
+  - Filter: just type; searches title + UID + created time + user prompts corpus
+    - Explicit tokens (pre-filter): `-uid=<part>`, `-d=<date>`; also supports `-d>=YYYY-MM-DD`, `-d<=YYYY-MM-DD`, and `-d:YYYY-MM` month match
+    - While filtering, one-key item shortcuts are disabled to avoid accidental actions; press Esc to clear filter then use shortcuts
   - Toggle selection while filtering: use `Tab` (Space also works in most terminals)
   - Selection: `Tab`/`Space` toggle, `C` clear; `e` export current, `E` export selected
   - Open detail: `Enter`/`l` | Refresh: `r` | Help: `?` | Quit: `q`
@@ -200,7 +203,9 @@ Run with: `./roo-task-man --hooks-dir ./hooks/custom`.
 
 - Task discovery uses VS Code `globalStorage` for the configured plugin ID. Folders under `<root>/tasks/*` are treated as tasks if they contain files. This can be customized via hooks.
 - Export creates `<id>.zip` with a simple manifest; import restores into the storage root.
-- The list view title shows the selected editor (e.g., `Cursor`) and each item shows `UUID — created` on the first line with the initial prompt summary under it. When `--debug` is set, the task's full path is appended in the description.
+- The list shows `title` as a single line (JSON and fenced code blocks removed; long text truncated). Right pane shows human prompts as one-liners with the same sanitization.
+- `--dump` writes Markdown with these rules; if a title/prompt was cleaned or truncated, the full content is included below in a collapsible `<details>` block.
+- The list view title shows the selected editor (e.g., `Cursor`). When `--debug` is set, the task's full path is appended in the description.
 - Restore state DB from a backup interactively:
   - `./roo-task-man --editor Code --restore`
   - Use Up/Down or j/k to select a backup (sorted by time), press Enter to restore both `state.vscdb` and paired `state.vscdb.backup` (same suffix). Press `o` to open the folder if you prefer restoring manually.

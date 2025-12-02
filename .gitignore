@@ -9,3 +9,7 @@ roo-task-man
 dist
 *-example/
 __debug*
+.gomodcache
+.gopath
+.gopath
+.gocache

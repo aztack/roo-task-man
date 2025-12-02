@@ -76,9 +76,10 @@ By default, tasks are assumed to live under VS Code’s `globalStorage` area for
   - Title line: single-line title (sanitized from summary when available).
   - Second line: `created time • task UID`.
 - Sorting: latest-first by default; toggle asc/desc with `S` (title shows `[sort:…]`).
-- Filtering: type to search by title, UID, created time, and description.
+- Filtering: type to search by title, UID, created time, and user prompts corpus.
   - Strict tokens: `-uid=<part>` and `-d=<part-of-created-time>` pre-filter the task set before fuzzy matching.
 - Selection: `Tab`/`Space` toggle, `C` clear; selection works even when filtering.
+  - While filtering, one-key item shortcuts are ignored (Esc to clear filter first).
 - Actions: `e` export current, `E` export selected, `o` open task folder, `x` delete (confirm), `r` refresh, `?` help.
 - Navigation: `j/k`, `g/G`, PgDown/Ctrl+f/Ctrl+d, PgUp/Ctrl+b/Ctrl+u.
 - Hooks may customize list item rendering via `renderTaskListItem(task)`.

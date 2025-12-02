@@ -33,6 +33,7 @@ func main() {
         importArg string // zip-path
         debug     bool
         inspectZip string
+        dumpPath   string
         showVersion bool
         taskIDsStr string // comma-separated task IDs for multi export
         dateRange  string // from..to, dates: YYYY-MM-DD or YYYYMMDD (inclusive)
@@ -50,6 +51,7 @@ func main() {
     flag.StringVar(&exportArg, "export", "", "export: <task-id>:<zip-path> or, with --taskids/--date-range, <zip-path>")
     flag.StringVar(&importArg, "import", "", "batch import: <zip-path>")
     flag.StringVar(&inspectZip, "inspect", "", "inspect tasks from a zip (open TUI on extracted content)")
+    flag.StringVar(&dumpPath, "dump", "", "dump tasks and human prompts to a markdown file")
     flag.StringVar(&taskIDsStr, "taskids", "", "comma-separated task UIDs to export into a single archive")
     flag.StringVar(&dateRange, "date-range", "", "date range for export: from..to; dates YYYY-MM-DD or YYYYMMDD (inclusive)")
     flag.StringVar(&workspace, "workspace", "", "workspace path to associate on --import (updates state.vscdb)")
@@ -109,6 +111,20 @@ func main() {
             log.Fatalf("restore failed: %v", err)
         }
         fmt.Printf("restored state DBs from suffix %s\n", sel)
+        return
+    }
+
+    // Dump mode: write markdown and exit
+    if dumpPath != "" {
+        // one-line progress indicator updated in place
+        progress := func(cur, total int) {
+            // \r keeps it on a single terminal line
+            fmt.Printf("\rDumping %d/%d…", cur, total)
+        }
+        if err := tasks.DumpMarkdownWithProgress(cfg, dumpPath, progress); err != nil {
+            log.Fatalf("dump failed: %v", err)
+        }
+        fmt.Printf("\nDump complete -> %s\n", dumpPath)
         return
     }
 
