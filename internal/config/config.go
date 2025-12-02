@@ -1,11 +1,11 @@
 package config
 
 import (
-    "encoding/json"
-    "errors"
-    "os"
-    "path/filepath"
-    "runtime"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"runtime"
 )
 
 type Config struct {

@@ -17,7 +17,7 @@ func LoadTasksWithHooks(cfg config.Config, env *hooks.HookEnv) ([]Task, error) {
     var dirs []string
     if env != nil {
         if ss, ok := env.CallStringSlice("discoverCandidates", root); ok && len(ss) > 0 {
-            log.Printf("[hooks] discoverCandidates returned %d dirs", len(ss))
+            if cfg.Debug { log.Printf("[hooks] discoverCandidates returned %d dirs", len(ss)) }
             dirs = ss
         }
     }
@@ -33,13 +33,13 @@ func LoadTasksWithHooks(cfg config.Config, env *hooks.HookEnv) ([]Task, error) {
         if env != nil {
             m := taskToMap(*t)
             if out, ok := env.CallExported("extendTask", m); ok {
-                log.Printf("[hooks] extendTask applied for %s", t.ID)
+                if cfg.Debug { log.Printf("[hooks] extendTask applied for %s", t.ID) }
                 if mm, ok2 := out.(map[string]any); ok2 {
                     *t = mapToTask(mm, *t)
                 }
             }
             if s, ok := env.CallString("decorateTaskRow", m); ok && s != "" {
-                log.Printf("[hooks] decorateTaskRow override for %s", t.ID)
+                if cfg.Debug { log.Printf("[hooks] decorateTaskRow override for %s", t.ID) }
                 t.Title = s
             }
         }

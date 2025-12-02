@@ -5,6 +5,7 @@ import (
     "encoding/json"
     "fmt"
     "io"
+    "log"
     "os"
     "path/filepath"
     "strings"
@@ -26,6 +27,15 @@ type Manifest struct {
 type ManifestMulti struct {
     Version int        `json:"version"`
     Tasks   []Manifest `json:"tasks"`
+}
+
+var debugEnabled bool
+
+// EnableDebug toggles internal debug logging for import/export operations.
+func EnableDebug(b bool) { debugEnabled = b }
+
+func debugf(format string, args ...any) {
+    if debugEnabled { log.Printf("[zipper] "+format, args...) }
 }
 
 func ExportTask(t tasks.Task, zipPath string) error {
@@ -83,7 +93,8 @@ func ExportTasksWithProgress(ts []tasks.Task, zipPath string, progress ProgressC
     for _, t := range ts {
         _ = filepath.Walk(t.Path, func(path string, info os.FileInfo, err error) error {
             if err != nil { return nil }
-            if !info.IsDir() { totalFiles++ }
+            if info.IsDir() { return nil }
+            totalFiles++
             return nil
         })
     }
@@ -132,6 +143,22 @@ func ImportAny(zipPath, destRoot string) error {
         // Build set of IDs
         ids := map[string]struct{}{}
         for _, m := range multi.Tasks { ids[m.ID] = struct{}{} }
+        debugf("multi-manifest with %d tasks", len(ids))
+        // Determine output base per id; if destination already exists, skip extracting that task
+        baseFor := map[string]string{}
+        for id := range ids {
+            base := filepath.Join(destRoot, "tasks", id)
+            if _, err := os.Stat(filepath.Dir(base)); err != nil {
+                base = filepath.Join(destRoot, id)
+            }
+            if _, err := os.Stat(base); err == nil {
+                debugf("destination exists for %s; skipping extraction", id)
+                baseFor[id] = "" // sentinel: skip
+                continue
+            }
+            if err := os.MkdirAll(base, 0o755); err != nil { return err }
+            baseFor[id] = base
+        }
         // Extract files
         for _, f := range r.File {
             if f.FileInfo().IsDir() { continue }
@@ -141,20 +168,48 @@ func ImportAny(zipPath, destRoot string) error {
             if len(segs) == 0 { continue }
             id := segs[0]
             if _, ok := ids[id]; !ok { continue }
-            // Destination path: prefer destRoot/tasks/<id>/...
-            base := filepath.Join(destRoot, "tasks", id)
-            if _, err := os.Stat(filepath.Dir(base)); err != nil {
-                base = filepath.Join(destRoot, id)
-            }
+            // Skip symlinks for safety
+            if f.FileInfo().Mode()&os.ModeSymlink != 0 { continue }
+            // Destination path using precomputed base
+            base := baseFor[id]
+            if base == "" { continue }
             outPath := filepath.Join(base, filepath.Join(segs[1:]...))
             if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil { return err }
             if err := extractFile(f, outPath); err != nil { return err }
+        }
+        for id, base := range baseFor {
+            if base == "" { debugf("skipped existing %s", id) } else { debugf("imported %s -> %s", id, base) }
         }
         return nil
     }
 
     // Single task fallback
     return ImportTask(zipPath, destRoot)
+}
+
+// InspectIDs returns the task IDs present in the archive manifest (single or multi).
+func InspectIDs(zipPath string) ([]string, error) {
+    r, err := zip.OpenReader(zipPath)
+    if err != nil { return nil, err }
+    defer r.Close()
+    var multi ManifestMulti
+    var single Manifest
+    for _, f := range r.File {
+        if strings.EqualFold(filepath.Base(f.Name), "roo-task-manifest.json") {
+            rc, err := f.Open(); if err != nil { return nil, err }
+            b, err := io.ReadAll(rc); rc.Close(); if err != nil { return nil, err }
+            if err := json.Unmarshal(b, &multi); err == nil && multi.Version >= 2 && len(multi.Tasks) > 0 {
+                ids := make([]string, 0, len(multi.Tasks))
+                for _, t := range multi.Tasks { ids = append(ids, t.ID) }
+                return ids, nil
+            }
+            if err := json.Unmarshal(b, &single); err == nil && single.ID != "" {
+                return []string{single.ID}, nil
+            }
+            return nil, fmt.Errorf("invalid manifest in %s", zipPath)
+        }
+    }
+    return nil, fmt.Errorf("manifest missing in %s", zipPath)
 }
 
 func ImportTask(zipPath, destRoot string) error {
@@ -189,8 +244,9 @@ func ImportTask(zipPath, destRoot string) error {
         dst = filepath.Join(destRoot, manifest.ID)
     }
     if _, err := os.Stat(dst); err == nil {
-        // Collision policy: create -copy with timestamp suffix
-        dst = dst + "-copy-" + time.Now().Format("20060102-150405")
+        // Destination exists -> skip extraction
+        debugf("destination exists for %s; skipping extraction", manifest.ID)
+        return nil
     }
     if err := os.MkdirAll(dst, 0o755); err != nil { return err }
 
@@ -200,6 +256,7 @@ func ImportTask(zipPath, destRoot string) error {
             continue
         }
         if f.FileInfo().IsDir() { continue }
+        if f.FileInfo().Mode()&os.ModeSymlink != 0 { continue }
         // Recreate the relative path under the task directory name
         // We expect paths like <id>/sub/dir/file; if not, place under dst preserving subpath after id
         rel := f.Name
@@ -214,6 +271,7 @@ func ImportTask(zipPath, destRoot string) error {
         if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil { return err }
         if err := extractFile(f, outPath); err != nil { return err }
     }
+    debugf("imported %s -> %s", manifest.ID, dst)
     return nil
 }
 
@@ -246,3 +304,4 @@ func extractFile(f *zip.File, out string) error {
     _, err = io.Copy(of, rc)
     return err
 }
+

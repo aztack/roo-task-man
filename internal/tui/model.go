@@ -453,6 +453,7 @@ func loadTasksCmd(cfg config.Config) tea.Cmd {
 
 func loadTasksWithHooksCmd(cfg config.Config) tea.Cmd {
     return func() tea.Msg {
+        hooks.EnableDebug(cfg.Debug)
         env, _ := hooks.LoadDir(cfg.HooksDir)
         list, err := tasks.LoadTasksWithHooks(cfg, env)
         if err != nil { return errMsg{err} }
@@ -472,6 +473,7 @@ type exportProgressMsg struct{ current, total int; zipPath string; err error }
 
 func loadHooksCmd(cfg config.Config) tea.Cmd {
     return func() tea.Msg {
+        hooks.EnableDebug(cfg.Debug)
         env, _ := hooks.LoadDir(cfg.HooksDir)
         return hooksLoadedMsg{env}
     }

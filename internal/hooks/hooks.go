@@ -11,6 +11,11 @@ import (
 
 type HookEnv struct{ rt *goja.Runtime }
 
+var debugEnabled bool
+
+func EnableDebug(b bool) { debugEnabled = b }
+func debugf(format string, args ...any) { if debugEnabled { log.Printf("[hooks] "+format, args...) } }
+
 func LoadDir(dir string) (*HookEnv, error) {
     env := &HookEnv{rt: goja.New()}
     // expose minimal FS read helper
@@ -36,15 +41,15 @@ func LoadDir(dir string) (*HookEnv, error) {
         code = strings.ReplaceAll(code, "export let ", "let ")
         code = strings.ReplaceAll(code, "export var ", "var ")
         if _, err := env.rt.RunString(code); err != nil {
-            log.Printf("[hooks] error evaluating %s: %v", e.Name(), err)
+            debugf("error evaluating %s: %v", e.Name(), err)
         } else {
-            log.Printf("[hooks] loaded %s", e.Name())
+            debugf("loaded %s", e.Name())
         }
     }
     for _, name := range []string{"renderTaskListItem","renderTaskDetail","extendTask","decorateTaskRow","discoverCandidates"} {
         v := env.rt.Get(name)
         if !goja.IsUndefined(v) && !goja.IsNull(v) {
-            log.Printf("[hooks] function available: %s", name)
+            debugf("function available: %s", name)
         }
     }
     return env, nil
@@ -54,19 +59,19 @@ func (h *HookEnv) Call(fn string, arg any) (goja.Value, bool) {
     if h == nil || h.rt == nil { return goja.Undefined(), false }
     v := h.rt.Get(fn)
     if goja.IsUndefined(v) || goja.IsNull(v) {
-        log.Printf("[hooks] function not found: %s", fn)
+        debugf("function not found: %s", fn)
         return goja.Undefined(), false
     }
     if f, ok := goja.AssertFunction(v); ok {
         rv, err := f(goja.Undefined(), h.rt.ToValue(arg))
         if err != nil {
-            log.Printf("[hooks] error calling %s: %v", fn, err)
+            debugf("error calling %s: %v", fn, err)
             return goja.Undefined(), false
         }
-        log.Printf("[hooks] %s returned: %#v", fn, rv.Export())
+        debugf("%s returned: %#v", fn, rv.Export())
         return rv, true
     }
-    log.Printf("[hooks] symbol is not a function: %s", fn)
+    debugf("symbol is not a function: %s", fn)
     return goja.Undefined(), false
 }
 

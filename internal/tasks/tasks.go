@@ -1,18 +1,18 @@
 package tasks
 
 import (
-    "errors"
-    "fmt"
-    "encoding/json"
-    "io/fs"
-    "os"
-    "path/filepath"
-    "runtime"
-    "sort"
-    "strings"
-    "time"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"runtime"
+	"sort"
+	"strings"
+	"time"
 
-    "roocode-task-man/internal/config"
+	"roocode-task-man/internal/config"
 )
 
 type Task struct {
@@ -168,6 +168,7 @@ func LoadHistory(t Task) []HistoryItem {
             APIProtocol string  `json:"apiProtocol"`
             Costs       float64 `json:"costs"`
             Request     string  `json:"request"`
+            Mode        string  `json:"mode"`
             TokenIn     int     `json:"tokenIn"`
             TokenOut    int     `json:"tokenOut"`
             CacheReads  int     `json:"cacheReads"`
@@ -184,6 +185,7 @@ func LoadHistory(t Task) []HistoryItem {
             fmt.Fprintf(&sb, "- Protocol: %s\\n", ai.APIProtocol)
             fmt.Fprintf(&sb, "- Cost: $%.4f\\n", ai.Costs)
             fmt.Fprintf(&sb, "- Tokens: in %d / out %d\\n", ai.TokenIn, ai.TokenOut)
+            fmt.Fprintf(&sb, "- Mode: %s\\n", ai.Mode)
             fmt.Fprintf(&sb, "- Cache: reads %d / writes %d\\n", ai.CacheReads, ai.CacheWrites)
             it.Text = sb.String()
         } else {
