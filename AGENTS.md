@@ -41,3 +41,11 @@ Example run with flags:
 - Default config: `~/.config/roo-code-man.json`. Override with `--config`.
 - Use `--hooks-dir` to load trusted JavaScript hooks; review hook code in `hooks/` before use.
 - When exporting/importing archives, validate paths and handle sensitive data carefully.
+
+## Agent Memory & MUSE Loop
+- Follow Think → Act → Reflect for substantive changes; consult `MUSE.md`.
+- Record durable learnings in `memory/`:
+  - `procedural.mem.md`: reusable steps/SOPs (e.g., fixing list indentation).
+  - `strategic.mem.md`: high‑level choices and trade‑offs (styling strategy).
+  - `tool.mem.md`: concrete tool usage/quirks (bubbletea/list, lipgloss).
+- When you fix a recurring issue, add a short note under `docs/issues/` and update the relevant memory file.
