@@ -8,3 +8,4 @@ roo-task-man
 ./hooks/**/*.js
 dist
 *-example/
+__debug*
