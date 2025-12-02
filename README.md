@@ -10,17 +10,19 @@ Terminal TUI for browsing, exporting, importing, and deleting RooCode tasks crea
 - Built with Go + Charmbracelet Bubble Tea
 - Vim keys: j/k/g/G, Enter/l open, h back, q quit, r refresh, e export, x delete
 
+See CHANGELOG.md for release notes (latest: v0.1.1).
+
 ## Getting Started
 
 - Requirements: Go 1.23+
 - Install deps and build:
 
 ```
-# Using Makefile (CGO required for JS engine)
+# Using Makefile
 make build
 
-# Or manual build (requires CGO)
-CGO_ENABLED=1 go build -o roo-task-man ./cmd/roo-task-man
+# Or manual build
+go build -o roo-task-man ./cmd/roo-task-man
 
 # Run
 ./roo-task-man
@@ -47,8 +49,13 @@ Flags:
   - For `Custom`, provide `--data-dir` to point directly to the globalStorage root
 - `--data-dir <path>` override VS Code globalStorage root
 - `--config <path>` config file (default `~/.config/roo-code-man.json`)
-- `--export <task-id>:<zip>` batch export then exit
-- `--import <zip>` batch import then exit
+- `--export <task-id>:<zip>` batch export (single task) then exit
+- `--export <zip>` with filters below to export multiple tasks:
+  - `--taskids=<id1>,<id2>,...` select by task UIDs
+  - `--date-range=from..to` select by created-at date (YYYY-MM-DD or YYYYMMDD, inclusive)
+- `--import <zip>` batch import (single or multi archive) then exit
+- `--workspace <path>` when combined with `--import`, also registers the imported tasks into the editor's global state DB so they appear in the extension history for that workspace
+- `--restore` interactive restore of `state.vscdb` from backups (lists `state.vscdb.bak-*`, restore both primary and paired `state.vscdb.backup`)
 - `--inspect <zip>` inspect a zip by extracting to a temp dir and opening the TUI on it
 - `--export-dir <path>` default directory for TUI exports
 - `--debug` print debug info (storage root, task paths) and show full paths in list descriptions
@@ -66,7 +73,7 @@ Default export location
   - Sort by created time: `S` toggles asc/desc (default: latest first)
   - Filter: just type; searches title + UID + created time + description
     - Explicit filters supported (strict pre-filter): include `-uid=<part>` and/or `-d=<part-of-created-time>` in your query; only matching tasks are shown, then further fuzzy filtering applies within those
-  - Toggle selection while filtering: use `Tab` (Space also works when not typing)
+  - Toggle selection while filtering: use `Tab` (Space also works in most terminals)
   - Selection: `Tab`/`Space` toggle, `C` clear; `e` export current, `E` export selected
   - Open detail: `Enter`/`l` | Refresh: `r` | Help: `?` | Quit: `q`
   - Page: PgDown/Ctrl+f/Ctrl+d, PgUp/Ctrl+b/Ctrl+u
@@ -79,12 +86,54 @@ Default export location
   - Jump by role: `]`/`[` next/prev AI, `}`/`{` next/prev User
   - Actions: `o` open task dir, `e/E` export, `x` delete, `h/q` back
 
+### CLI-Only Export Examples
+
+- Single task:
+  - `./roo-task-man --editor Code --export <task-id>:/tmp/task.zip`
+- Multiple by IDs:
+  - `./roo-task-man --editor Code --export /tmp/tasks.zip --taskids id1,id2,id3`
+- By date range (inclusive):
+  - `./roo-task-man --editor Code --export /tmp/tasks.zip --date-range 2025-12-01..2025-12-02`
+- Combine filters (union):
+  - `./roo-task-man --editor Code --export /tmp/tasks.zip --taskids id1,id2 --date-range 20251201..20251202`
+
+### Import + Register Into Editor History
+
+> **Note**: ALWAYS Backup your editor state DBs before importing!
+> MacOS: `~/Library/Application Support/<Editor>/User/globalStorage/state.vscdb{,.backup}`
+> Linux: `~/.config/<Editor>/User/globalStorage/state.vscdb{,.backup}`
+> Windows: `%APPDATA%/<Editor>/User/globalStorage/state.vscdb{,.backup}`
+
+
+When importing, the tool also adds the imported tasks to the editor's recent task history. If `--workspace` is omitted, the current working directory is used.
+
+- `./roo-task-man --editor Code --import /path/to/in.zip --workspace /path/to/workspace`
+  or simply:
+- `./roo-task-man --editor Code --import /path/to/in.zip` (uses current working directory)
+
+### Default Export Filename (when --export omitted)
+
+- If you pass `--taskids` without `--export`, the filename is derived automatically in the current directory:
+  - Single ID: `<editor>-<plugin-id>-<full-id>.zip`
+  - Multiple IDs: `<editor>-<plugin-id>-<A>_<B>_<C>.zip` where `<A>/<B>/<C>` are the first segments (before `-`) of each ID.
+
+Behavior:
+- Extracts tasks into the configured globalStorage root (same as TUI import).
+- Opens the editor's global state DB (`state.vscdb`) and appends one entry per imported task under your `--plugin-id` key.
+- Each entry includes: `id`, `number`, `ts` (created time), `task` (summary), `tokensIn`, `tokensOut`, `cacheReads`, `cacheWrites`, `totalCost`, `size`, `workspace`, and `mode` (set to `code`).
+
+Notes:
+- On macOS, the state DB is at `~/Library/Application Support/<Editor>/User/globalStorage/state.vscdb`.
+- On Linux, at `~/.config/<Editor>/User/globalStorage/state.vscdb`.
+- On Windows, at `%APPDATA%/<Editor>/User/globalStorage/state.vscdb`.
+- A timestamped backup of the DB is created before mutation; if a `state.vscdb.backup` exists, it is updated as well.
+- If a task directory already exists at the destination, import skips extracting that task (no duplicate "-copy" directories).
+
 ## Development
 
 - Go 1.23+ is required.
 - Building:
-  - Without hooks: `go build -o roo-task-man ./cmd/roo-task-man`
-  - With hooks: `go get github.com/dop251/goja@latest && go build -tags js_hooks -o roo-task-man ./cmd/roo-task-man`
+  - `go build -o roo-task-man ./cmd/roo-task-man`
 - Running against example data and hooks:
   - `./roo-task-man --data-dir ./task-example --hooks-dir ./hooks/custom --debug`
 - Tests:
@@ -109,7 +158,6 @@ Place `.js` files in `hooksDir`. See `docs/hooks.d.ts` for available hook signat
 
 Hooks are enabled by default
 - No special build tags are needed. Place `.js` files in your `--hooks-dir` and run with `--debug` to see hook loader/call logs.
-- Note: The default JS engine uses CGO; ensure a C toolchain is available (Xcode CLT on macOS, MinGW on Windows for cross-compiles).
 
 Customize task list items
 ```
@@ -120,7 +168,7 @@ export function renderTaskListItem(task) {
   return { title, desc };
 }
 ```
-You should see the title surrounded with `===` in the list. If not, confirm you built with `-tags js_hooks` and passed `--hooks-dir`. The engine strips `export` keywords automatically for compatibility with plain scripts.
+You should see the title surrounded with `===` in the list. If not, confirm you passed `--hooks-dir`. The engine strips `export` keywords automatically for compatibility with plain scripts.
 
 Debugging hooks
 - Run with `--debug` to see loader and call logs, e.g.:
@@ -150,3 +198,6 @@ Run with: `./roo-task-man --hooks-dir ./hooks/custom`.
 - Task discovery uses VS Code `globalStorage` for the configured plugin ID. Folders under `<root>/tasks/*` are treated as tasks if they contain files. This can be customized via hooks.
 - Export creates `<id>.zip` with a simple manifest; import restores into the storage root.
 - The list view title shows the selected editor (e.g., `Cursor`) and each item shows `UUID — created` on the first line with the initial prompt summary under it. When `--debug` is set, the task's full path is appended in the description.
+- Restore state DB from a backup interactively:
+  - `./roo-task-man --editor Code --restore`
+  - Use Up/Down or j/k to select a backup (sorted by time), press Enter to restore both `state.vscdb` and paired `state.vscdb.backup` (same suffix). Press `o` to open the folder if you prefer restoring manually.
