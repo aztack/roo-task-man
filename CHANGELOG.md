@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
   - New `--restore` interactive TUI to restore `state.vscdb` and paired `state.vscdb.backup` from backups (`state.vscdb.bak-<suffix>`), with Vim/arrow navigation and `o` to open folder.
   - Works even if original DB files are missing; prompts to close the editor first.
   - Backup file name suffixes are consistent across primary and backup DBs.
+  - Added Linux release artifacts (amd64, arm64) to Makefile `make release` (CGO disabled for cross-compile).
 
   - Default export filename rules when `--taskids` is used without `--export`.
   - `[hooks]` logs now respect `--debug` (quiet by default).

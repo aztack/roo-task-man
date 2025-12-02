@@ -30,9 +30,12 @@ go build -o roo-task-man ./cmd/roo-task-man
 # Print version
 ./roo-task-man --version
 
-# Build release archives for macOS (arm64/amd64) and Windows (amd64)
+# Build release archives for macOS (arm64/amd64), Linux (amd64/arm64), and Windows (amd64)
 make release
 ls dist/
+
+Notes:
+- Linux cross-builds are CGO-free to avoid host toolchain issues (CGO_ENABLED=0).
 
 # Update VERSION file from git tags before release
 make version-update

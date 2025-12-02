@@ -5,7 +5,7 @@ COMMIT    ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DATE      ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 DIST      ?= dist
 
-.PHONY: build run test tidy clean release release-darwin-arm64 release-darwin-amd64 release-windows-amd64
+.PHONY: build run test tidy clean release release-darwin-arm64 release-darwin-amd64 release-windows-amd64 release-linux-amd64 release-linux-arm64
 
 build:
 	CGO_ENABLED=1 go build -ldflags "$(LDFLAGS)" -o $(APP) ./cmd/roo-task-man
@@ -26,7 +26,7 @@ clean:
 $(DIST):
 	mkdir -p $(DIST)
 
-release: $(DIST) release-darwin-arm64 release-darwin-amd64 release-windows-amd64
+release: $(DIST) release-darwin-arm64 release-darwin-amd64 release-linux-amd64 release-linux-arm64 release-windows-amd64
 	@echo "Release artifacts in $(DIST)"
 
 release-darwin-arm64: $(DIST)
@@ -55,6 +55,24 @@ release-windows-amd64: $(DIST)
 	mv $(DIST)/$(APP).exe $(DIST)/$(APP)_$(VERSION)_windows_amd64/ && \
 	cd $(DIST) && zip -rq $(APP)_$(VERSION)_windows_amd64.zip $(APP)_$(VERSION)_windows_amd64 && \
 	rm -rf $(DIST)/$(APP)_$(VERSION)_windows_amd64
+
+release-linux-amd64: $(DIST)
+	@echo "Building Linux amd64…"
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+		go build -ldflags "$(LDFLAGS)" -o $(DIST)/$(APP) ./cmd/roo-task-man
+	mkdir -p $(DIST)/$(APP)_$(VERSION)_linux_amd64 && \
+	cp $(DIST)/$(APP) $(DIST)/$(APP)_$(VERSION)_linux_amd64/ && \
+	tar -C $(DIST)/$(APP)_$(VERSION)_linux_amd64 -czf $(DIST)/$(APP)_$(VERSION)_linux_amd64.tar.gz . && \
+	rm -rf $(DIST)/$(APP)_$(VERSION)_linux_amd64 $(DIST)/$(APP)
+
+release-linux-arm64: $(DIST)
+	@echo "Building Linux arm64…"
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
+		go build -ldflags "$(LDFLAGS)" -o $(DIST)/$(APP) ./cmd/roo-task-man
+	mkdir -p $(DIST)/$(APP)_$(VERSION)_linux_arm64 && \
+	cp $(DIST)/$(APP) $(DIST)/$(APP)_$(VERSION)_linux_arm64/ && \
+	tar -C $(DIST)/$(APP)_$(VERSION)_linux_arm64 -czf $(DIST)/$(APP)_$(VERSION)_linux_arm64.tar.gz . && \
+	rm -rf $(DIST)/$(APP)_$(VERSION)_linux_arm64 $(DIST)/$(APP)
 
 .PHONY: version-update
 version-update:
